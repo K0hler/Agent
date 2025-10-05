@@ -1,0 +1,188 @@
+Отлично 👌 Ты скинул `api.yml` — это спецификация OpenAPI для GigaChat. Давай я сразу под неё подстрою план, чтобы твой проект выглядел аккуратно и соответствовал документации.
+
+---
+
+# 📌 Пошаговый план разработки «Агент-помощник системного аналитика»
+
+*(основано на API из `api.yml` GigaChat)*
+
+---
+
+## 1. Подготовка окружения
+
+1. Создать проект и папки:
+
+   ```
+   sa-agent/
+   ├─ app.py                 # Streamlit UI
+   ├─ gigachat_client.py     # обёртка под API GigaChat
+   ├─ prompts/
+   │  └─ system_prompt.txt
+   ├─ requirements.txt
+   ├─ .env
+   └─ README.md
+   ```
+2. В `requirements.txt`:
+
+   ```
+   streamlit
+   requests
+   python-dotenv
+   ```
+3. В `.env`:
+
+   ```
+   GIGACHAT_API_URL=https://gigachat.devices.sberbank.ru/api/v1
+   GIGACHAT_API_KEY=ВАШ_API_KEY
+   ```
+
+---
+
+## 2. Авторизация и работа с API GigaChat
+
+Согласно `api.yml`, у GigaChat есть стандартный **OAuth 2.0** поток:
+
+* сначала нужно запросить `access_token` через `POST /api/v1/oauth` (или `/tokens` — зависит от версии файла);
+* потом использовать его в `Authorization: Bearer ...` для запросов.
+
+📌 В `gigachat_client.py` будет:
+
+* метод `get_token()` → получает/обновляет токен;
+* метод `chat_completion(messages)` → делает `POST /chat/completions`, как описано в API.
+
+---
+
+### 🔧 Шаблон gigachat_client.py
+
+```python
+import os
+import requests
+import time
+
+BASE_URL = os.getenv("GIGACHAT_API_URL", "https://gigachat.devices.sberbank.ru/api/v1")
+CLIENT_ID = os.getenv("GIGACHAT_CLIENT_ID")
+CLIENT_SECRET = os.getenv("GIGACHAT_CLIENT_SECRET")
+
+_token = None
+_token_expiry = 0
+
+def get_token():
+    global _token, _token_expiry
+    if _token and time.time() < _token_expiry:
+        return _token
+
+    url = f"{BASE_URL}/oauth/token"
+    data = {
+        "grant_type": "client_credentials",
+        "scope": "GIGACHAT_API_PERS"
+    }
+    resp = requests.post(url, data=data, auth=(CLIENT_ID, CLIENT_SECRET))
+    resp.raise_for_status()
+    js = resp.json()
+    _token = js["access_token"]
+    _token_expiry = time.time() + js["expires_in"] - 60
+    return _token
+
+def chat_completion(messages, model="GigaChat", temperature=0.0):
+    url = f"{BASE_URL}/chat/completions"
+    headers = {"Authorization": f"Bearer {get_token()}"}
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature
+    }
+    resp = requests.post(url, headers=headers, json=payload)
+    resp.raise_for_status()
+    return resp.json()
+```
+
+---
+
+## 3. Промпт и структура ответа
+
+Сразу формируем жёсткий формат JSON в ответе:
+
+```json
+{
+  "title": "Название проекта",
+  "bpmn_mermaid": "код диаграммы mermaid",
+  "usecase_mermaid": "код use-case диаграммы mermaid",
+  "requirements_md": "Markdown список требований (FR/NFR)"
+}
+```
+
+👉 `system_prompt.txt`:
+
+```
+Ты системный аналитик. Твоя задача: на основе описания пользователя выдать анализ.
+Верни результат строго в JSON со следующими полями:
+- title
+- bpmn_mermaid (код mermaid для процесса)
+- usecase_mermaid (код mermaid для use-case)
+- requirements_md (текст в markdown со списками FR и NFR)
+Не добавляй пояснений, только JSON.
+```
+
+---
+
+## 4. Streamlit интерфейс (app.py)
+
+1. Текстовое поле для описания.
+2. Кнопка «Сгенерировать».
+3. Вкладки для:
+
+   * BPMN (рендер через mermaid.js),
+   * Use Case,
+   * Требования (markdown),
+   * Raw JSON.
+
+📌 Рендер mermaid:
+
+```python
+import streamlit.components.v1 as components
+
+def render_mermaid(code: str, height=400):
+    html = f"""
+    <div class="mermaid">{code}</div>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({{startOnLoad:true}});</script>
+    """
+    components.html(html, height=height, scrolling=True)
+```
+
+---
+
+## 5. Логика работы
+
+1. Пользователь вводит описание.
+2. В `app.py` формируется `messages`:
+
+   ```python
+   messages = [
+       {"role": "system", "content": open("prompts/system_prompt.txt").read()},
+       {"role": "user", "content": user_input}
+   ]
+   ```
+3. Запрос в `chat_completion(messages)`.
+4. Ответ парсится как JSON → результаты выводятся.
+5. При ошибке JSON-парсинга → показывается сырой текст.
+
+---
+
+## 6. Тестовые кейсы
+
+* Университет: выдача справок студентам.
+* Интернет-магазин: заказ товара.
+* Поликлиника: запись на приём.
+
+---
+
+## 7. Что добавить для резюме
+
+* README.md с:
+
+  * описанием проекта,
+  * инструкцией запуска,
+  * скриншотами интерфейса,
+  * примерами вход/выход.
+* Опционально: кнопка «Скачать в Markdown» итоговый отчёт.
