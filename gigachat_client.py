@@ -38,6 +38,7 @@ class GigaChatClient:
         try:
             # Создаем payload для запроса
             payload = {
+                "model": model,
                 "messages": messages,
                 "temperature": temperature
             }

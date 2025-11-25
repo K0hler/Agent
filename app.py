@@ -32,7 +32,7 @@ with st.sidebar:
     """)
     st.markdown("---")
     st.markdown("### Настройки модели")
-    model_name = st.selectbox("Выберите модель GigaChat", ["GigaChat", "GigaChat-Pro"], index=0)
+    model_name = st.selectbox("Выберите модель GigaChat", ["GigaChat", "GigaChat-Pro", "GigaChat-2-Max"], index=0)
     temperature = st.slider("Температура", 0.0, 1.0, 0.0, 0.1)
 
 st.header("📝 Описание системы")
